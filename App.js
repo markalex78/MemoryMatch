@@ -19,8 +19,7 @@ const flipCards = () => {
         'bell', 'bell',
         'gift', 'gift',
     ];
-    const randomIcons = randomArrFunction(icons);
-    return randomIcons.map((icon, index) => ({
+    return randomArrFunction(icons).map((icon, index) => ({
         id: index,
         symbol: icon,
         isFlipped: false,
@@ -33,20 +32,36 @@ const App = () => {
     const [matches, setMatches] = useState(0);
     const [winMessage, setWinMessage] = useState(new Animated.Value(0));
     const [gameWon, setGameWon] = useState(false);
+    const [timer, setTimer] = useState(0);
+    const [timerIsActive, setTimerIsActive] = useState(false);
+
+    // Timer useEffect
+    useEffect(() => {
+        let interval = null;
+        if (timerIsActive) {
+            interval = setInterval(() => {
+                setTimer((prevTimer) => prevTimer + 1);
+            }, 1000);
+        }
+        return () => clearInterval(interval);
+    }, [timerIsActive]);
 
     const cardClickFunction = (card) => {
         if (!gameWon && selectedCards.length < 2 && !card.isFlipped) {
-            const updatedSelectedCards = [...selectedCards, card];
-            const updatedCards = cards.map((c) => c.id === card.id ? { ...c, isFlipped: true } : c);
-            setSelectedCards(updatedSelectedCards);
-            setCards(updatedCards);
+            if (selectedCards.length === 0 && !timerIsActive) {
+                setTimerIsActive(true); // Start the timer on the first card click
+            }
+                const updatedSelectedCards = [...selectedCards, card];
+                const updatedCards = cards.map((c) => c.id === card.id ? { ...c, isFlipped: true } : c);
+                setSelectedCards(updatedSelectedCards);
+                setCards(updatedCards);
 
             if (updatedSelectedCards.length === 2) {
                 if (updatedSelectedCards[0].symbol === updatedSelectedCards[1].symbol) {
                     setMatches(matches + 1);
                     setSelectedCards([]);
 
-                    // Trigger a vibration for successful match
+                    // Vibration on successful match
                     Vibration.vibrate();
 
                     if (matches + 1 === cards.length / 2) {
@@ -65,22 +80,37 @@ const App = () => {
     };
 
     const winGameFunction = () => {
-        Animated.timing(winMessage, {
-            toValue: 1,
-            duration: 1000,
-            easing: Easing.linear,
-            useNativeDriver: false,
-        }).start();
+        setGameWon(true);
+        setTimerIsActive(false); // Stop the timer when the game is won
     };
 
     useEffect(() => {
         if (matches === cards.length / 2) {
             winGameFunction();
-            setGameWon(true);
         }
     }, [matches]);
 
+    // Reset game function updated to stop the timer and reset it
+    const resetGame = () => {
+        setCards(flipCards());
+        setSelectedCards([]);
+        setMatches(0);
+        setWinMessage(new Animated.Value(0));
+        setGameWon(false);
+        setTimer(0); 
+        setTimerIsActive(false); // Ensure the timer is stopped and reset
+    };
+
+    // Function to manually reset the timer
+    const resetTimerManually = () => {
+        setTimer(0); // Reset the timer to 0 manually
+        if (!gameWon) { // Optionally, stop the timer if the game isn't won
+            setTimerIsActive(false);
+        }
+    };
+
     const msg = `Matches: ${matches} / ${cards.length / 2}`;
+    const timeMsg = `Time: ${timer} seconds`;
 
     // State to hold the orientation
     const [orientation, setOrientation] = useState(getOrientation());
@@ -92,25 +122,23 @@ const App = () => {
     }
 
     useEffect(() => {
-        // Function to handle orientation changes
-        const orientationChangeHandler = () => {
+        const subscription = Dimensions.addEventListener('change', (e) => {
             setOrientation(getOrientation());
-        };
+        });
 
-        // Add event listener for orientation changes
-        Dimensions.addEventListener('change', orientationChangeHandler);
-
-        // Cleanup function to remove the event listener
         return () => {
-            Dimensions.removeEventListener('change', orientationChangeHandler);
+            subscription.remove();
         };
     }, []);
 
     return (
         <View style={styles.container}>
             <Text style={styles.header1}>Memory Match Game</Text>
-            <Text style={styles.header2}>Have Fun!</Text>
-            <Text style={styles.matchText}>{msg}</Text>
+            {/* Displaying the timer */}
+            <Text style={styles.timerText}>Time: {timer} seconds</Text>
+            {/* Place the new reset button underneath the timer display */}
+            <Button title="Reset Timer" onPress={resetTimerManually} />
+            <Text style={styles.matchText}>Matches: {matches} / {cards.length / 2}</Text>
             {gameWon ? (
                 <View style={styles.winMessage}>
                     <View style={styles.winMessageContent}>
@@ -150,6 +178,11 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         backgroundColor: 'white',
+    },
+    timerText: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        marginBottom: 10,
     },
     header1: {
         fontSize: 36,
