@@ -69,7 +69,7 @@ const App = () => {
         if (timer < highScore || highScore === 0) {
             setHighScore(timer);
             saveHighScore(timer);
-            // Notify the user of the new high score
+            // Notify user of the new high score
             alert("Congratulations! You Achieved a New High Score!");
         }
     };
@@ -153,7 +153,7 @@ const App = () => {
         setWinMessage(new Animated.Value(0));
         setGameWon(false);
         // setTimer(0);
-        setTimerIsActive(false); // Ensure the timer is stopped and reset
+        setTimerIsActive(false); // Ensure the timer is stopped
     };
 
     // Function to manually reset the timer
