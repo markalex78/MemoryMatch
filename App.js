@@ -1,6 +1,27 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, Button, StyleSheet, TouchableOpacity, Animated, Easing, Vibration, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Animated, Vibration, Dimensions } from 'react-native';
 import Icon from 'react-native-vector-icons/FontAwesome';
+import * as FileSystem from 'expo-file-system';
+import { Audio } from 'expo-av';
+
+const highScoreFileName = FileSystem.documentDirectory + 'highscore.json';
+
+const loadHighScore = async () => {
+    try {
+        const highScoreString = await FileSystem.readAsStringAsync(highScoreFileName);
+        return JSON.parse(highScoreString).highScore;
+    } catch (e) {
+        return 0; // Default high score
+    }
+};
+
+const saveHighScore = async (highScore) => {
+    try {
+        await FileSystem.writeAsStringAsync(highScoreFileName, JSON.stringify({ highScore }));
+    } catch (e) {
+        console.error("Failed to save high score", e);
+    }
+};
 
 const randomArrFunction = (arr) => {
     for (let i = arr.length - 1; i > 0; i--) {
@@ -34,6 +55,24 @@ const App = () => {
     const [gameWon, setGameWon] = useState(false);
     const [timer, setTimer] = useState(0);
     const [timerIsActive, setTimerIsActive] = useState(false);
+    const [highScore, setHighScore] = useState(0);
+
+    useEffect(() => {
+        const init = async () => {
+            const savedHighScore = await loadHighScore();
+            setHighScore(savedHighScore);
+        };
+        init();
+    }, []);
+
+    const checkForNewHighScore = () => {
+        if (timer < highScore || highScore === 0) {
+            setHighScore(timer);
+            saveHighScore(timer);
+            // Notify the user of the new high score
+            alert("Congratulations! You Achieved a New High Score!");
+        }
+    };
 
     // Timer useEffect
     useEffect(() => {
@@ -46,15 +85,30 @@ const App = () => {
         return () => clearInterval(interval);
     }, [timerIsActive]);
 
+    const soundObject = new Audio.Sound();
+
+    const playSound = async () => {
+        try {
+            await soundObject.loadAsync(require('./assets/sounds/surprise.mp3'));
+            await soundObject.playAsync();
+            // Your sound is playing!
+
+            // When the sound is done playing, unload it from memory
+            await soundObject.unloadAsync();
+        } catch (error) {
+            // An error occurred!
+        }
+    };
+
     const cardClickFunction = (card) => {
         if (!gameWon && selectedCards.length < 2 && !card.isFlipped) {
             if (selectedCards.length === 0 && !timerIsActive) {
                 setTimerIsActive(true); // Start the timer on the first card click
             }
-                const updatedSelectedCards = [...selectedCards, card];
-                const updatedCards = cards.map((c) => c.id === card.id ? { ...c, isFlipped: true } : c);
-                setSelectedCards(updatedSelectedCards);
-                setCards(updatedCards);
+            const updatedSelectedCards = [...selectedCards, card];
+            const updatedCards = cards.map((c) => c.id === card.id ? { ...c, isFlipped: true } : c);
+            setSelectedCards(updatedSelectedCards);
+            setCards(updatedCards);
 
             if (updatedSelectedCards.length === 2) {
                 if (updatedSelectedCards[0].symbol === updatedSelectedCards[1].symbol) {
@@ -82,6 +136,7 @@ const App = () => {
     const winGameFunction = () => {
         setGameWon(true);
         setTimerIsActive(false); // Stop the timer when the game is won
+        checkForNewHighScore(); // Check if the current score is a new high score
     };
 
     useEffect(() => {
@@ -97,7 +152,7 @@ const App = () => {
         setMatches(0);
         setWinMessage(new Animated.Value(0));
         setGameWon(false);
-        setTimer(0); 
+        // setTimer(0);
         setTimerIsActive(false); // Ensure the timer is stopped and reset
     };
 
@@ -107,6 +162,11 @@ const App = () => {
         if (!gameWon) { // Optionally, stop the timer if the game isn't won
             setTimerIsActive(false);
         }
+    };
+
+    const resetHighScoreManually = () => {
+        setHighScore(0); // Reset the high score to 0
+        saveHighScore(0); // Save the reset high score
     };
 
     const msg = `Matches: ${matches} / ${cards.length / 2}`;
@@ -134,26 +194,33 @@ const App = () => {
     return (
         <View style={styles.container}>
             <Text style={styles.header1}>Memory Match Game</Text>
-            {/* Displaying the timer */}
+            {/* Display high score and timer */}
+            <Text style={styles.timerText}>High Score: {highScore} seconds</Text>
             <Text style={styles.timerText}>Time: {timer} seconds</Text>
-            {/* Place the new reset button underneath the timer display */}
-            <Button title="Reset Timer" onPress={resetTimerManually} />
+
+            {/* Reset Timer / Reset High Score */}
+            <View style={styles.resetButtonsContainer}>
+                <TouchableOpacity onPress={resetTimerManually}>
+                    <Text style={styles.resetActionText}>Reset Timer</Text>
+                </TouchableOpacity>
+                <Text style={styles.resetActionText}> / </Text>
+                <TouchableOpacity onPress={resetHighScoreManually}>
+                    <Text style={styles.resetActionText}>Reset High Score</Text>
+                </TouchableOpacity>
+            </View>
+
             <Text style={styles.matchText}>Matches: {matches} / {cards.length / 2}</Text>
+
             {gameWon ? (
                 <View style={styles.winMessage}>
                     <View style={styles.winMessageContent}>
                         <Text style={styles.winText}>Congratulations! You Won!</Text>
                     </View>
-                    <Button
-                        title="Restart"
-                        onPress={() => {
-                            setCards(flipCards());
-                            setSelectedCards([]);
-                            setMatches(0);
-                            setWinMessage(new Animated.Value(0));
-                            setGameWon(false);
-                        }}
-                    />
+                    <TouchableOpacity
+                        onPress={resetGame}
+                        style={styles.restartButton}>
+                        <Text style={styles.restartText}>Restart</Text>
+                    </TouchableOpacity>
                 </View>
             ) : (
                 <View style={styles.grid}>
@@ -170,17 +237,17 @@ const App = () => {
             )}
         </View>
     );
-}; 
+};
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: 'white',
+        backgroundColor: 'lightgrey',
     },
     timerText: {
-        fontSize: 20,
+        fontSize: 18,
         fontWeight: 'bold',
         marginBottom: 10,
     },
@@ -189,12 +256,7 @@ const styles = StyleSheet.create({
         marginBottom: 10,
         color: 'green',
     },
-    header2: {
-        fontSize: 18,
-        marginBottom: 20,
-        color: 'black',
-        fontWeight: 'bold',
-    },
+
     matchText: {
         fontSize: 18,
         color: 'black',
@@ -231,14 +293,32 @@ const styles = StyleSheet.create({
         zIndex: 1,
     },
     winMessageContent: {
-        backgroundColor: 'rgba(255, 215, 0, 0.7)',
+        backgroundColor: '#FFD700',
         padding: 20,
         borderRadius: 10,
         alignItems: 'center',
     },
     winText: {
-        fontSize: 36,
+        fontSize: 30,
         color: 'white',
+    },
+    resetButtonsContainer: {
+        flexDirection: 'row', // Align buttons horizontally
+        alignItems: 'center', // Center buttons vertically
+        justifyContent: 'space-around', // Center buttons horizontally
+        marginTop: 10, // Add some margin at the top
+        marginBottom: 20, // Add some margin at the bottom
+    },
+    resetActionText: {
+        fontSize: 18,
+        color: '#007bff', // Bootstrap's default blue
+        fontWeight: 'bold',
+    },
+    restartText: {
+        fontSize: 30, // Larger font size for better visibility
+        color: '#FFD700',
+        fontWeight: 'bold',
+        marginTop: 20, // Margin at the top for spacing
     },
 });
 
